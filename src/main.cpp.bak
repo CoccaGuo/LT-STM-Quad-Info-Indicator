@@ -1,0 +1,89 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <config.h>
+#include <display.h>
+
+IPAddress serverIP;
+WiFiClient client;
+
+char buffer[10] = {0};
+double current = 0;
+
+void setup()
+{
+  // Init Display
+  gfx->begin();
+  gfx->fillScreen(WHITE);
+  gfx->setTextSize(2);
+  gfx->setTextColor(BLACK);
+  pinMode(TFT_BLG, OUTPUT);
+  digitalWrite(TFT_BLG, HIGH);
+
+  gfx->println("Connecting to WiFi");
+  serverIP.fromString(CONFIG_IP);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.begin(WIFI_SSID, WIFI_PW);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  gfx->println("WiFi connected");
+  gfx->print("Local IP: ");
+  gfx->println(WiFi.localIP());
+  gfx->print("Server IP: ");
+  gfx->println(serverIP);
+  gfx->print("Server Port: ");
+  gfx->println(CONFIG_PORT);
+  // connect to server
+  gfx->println("Attempt to connect TCP Server");
+  if (client.connect(serverIP, CONFIG_PORT)){
+    gfx->println("Connected to TCP Server");
+  }
+  buffer[0] = 0x01;
+  buffer[1] = 0x05;
+}
+
+void loop()
+{
+  if (client.connected())
+  {
+    // send query in buffer to server
+    client.write(buffer, 10);
+    // wait till server respnse
+    while (!client.available())
+    {
+      delay(1);
+    }
+      client.readBytes((char*)&current, 8);
+      // change endian of current
+
+    for (int i = 0; i < sizeof(current); i++)
+    {
+      gfx->print(((char*)&current)[i], HEX);
+      gfx->print(" ");
+    }
+    gfx->println(current);
+    auto var = __builtin_bswap64(*(unsigned long long *)&current);
+    current = *(double *)&var;
+    for (int i = 0; i < sizeof(current); i++)
+    {
+      gfx->print(((char*)&current)[i], HEX);
+      gfx->print(" ");
+    }
+    gfx->println(current);
+    delay(1000);
+  }
+  else
+  {
+    gfx->println("Disconnected from TCP Server");
+    client.stop();
+    delay(1000);
+    if (client.connect(serverIP, CONFIG_PORT))
+    {
+      gfx->println("Connected to TCP Server");
+    }
+  }
+
+}
